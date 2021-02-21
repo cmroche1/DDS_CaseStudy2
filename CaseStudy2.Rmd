@@ -1,0 +1,248 @@
+---
+title: "CaseStudy2"
+author: "Chris Roche"
+date: "2/18/2021"
+output: html_document
+---
+
+```{r, echo=FALSE}
+suppressMessages( library(tidyverse) )
+suppressMessages( library(class) )   # needed for knn
+suppressMessages( library(dplyr) )
+suppressMessages( library(caret) )   # needed for confusionMatrix
+suppressMessages( library(ggthemes) )
+suppressMessages( library(GGally) )
+suppressMessages( library(plotly) )
+suppressMessages( library(Metrics))
+suppressMessages( library(readxl) )
+
+```
+
+# Evaluating Attrition and Predicting Monthly Income
+<br />  
+
+#### Load in files
+```{r}
+caseStudy2data = read.csv("data/CaseStudy2-data.csv", header = TRUE)
+caseStudy2noAtt = read.csv("data/CaseStudy2CompSet-NoAttrition.csv", header = TRUE)
+caseStudy2noSalary = read_excel("data/CaseStudy2CompSet-NoSalary.xlsx")
+```
+<br />  
+
+#### Clean data we'll use for training
+```{r}
+caseStudy2data$Attrition <- as.factor(caseStudy2data$Attrition)
+caseStudy2data$BusinessTravel <- as.factor(caseStudy2data$BusinessTravel)
+caseStudy2data$Department <- as.factor(caseStudy2data$Department)
+caseStudy2data$EducationField <- as.factor(caseStudy2data$EducationField)
+caseStudy2data$Gender <- as.factor(caseStudy2data$Gender)
+caseStudy2data$MaritalStatus <- as.factor(caseStudy2data$MaritalStatus)
+caseStudy2data$Over18 <- as.factor(caseStudy2data$Over18)
+caseStudy2data$OverTime <- as.factor(caseStudy2data$OverTime)
+
+# Look for missing values -- there are none
+row.has.na <- apply(caseStudy2data, 1, function(x){any(is.na(x))})
+sum(row.has.na)
+```
+<br />  
+
+## Part 1 - KNN for Attrition of emplyees
+#### Begin exploring correlation of several variables for Attrition
+#### Below are the 3 variables identifed for highest Sensitivity/Specificity
+```{r}
+# 1 - Job Level
+caseStudy2data %>% ggplot(aes(x = JobLevel, y = Attrition)) + geom_boxplot() + ggtitle("Job Level vs Attrition")
+
+p = caseStudy2data %>% 
+  count(JobLevel,Attrition) %>% 
+  ggplot(aes(x=JobLevel,y=Attrition)) + geom_tile(mapping = aes(fill = n)) + ggtitle("Job Level vs Attrition")
+ggplotly(p)
+
+# 2 - Number of Companies worked
+caseStudy2data %>% ggplot(aes(x = NumCompaniesWorked, y = Attrition)) + geom_boxplot() + ggtitle("Number of Companies Worked vs Attrition")
+
+p = caseStudy2data %>% 
+  count(NumCompaniesWorked,Attrition) %>% 
+  ggplot(aes(x=NumCompaniesWorked,y=Attrition)) + geom_tile(mapping = aes(fill = n)) + ggtitle("Number of Companies Worked vs Attrition")
+ggplotly(p)
+
+# 3 - Years at the company
+caseStudy2data %>% ggplot(aes(x = YearsAtCompany, y = Attrition)) + geom_boxplot() + ggtitle("Years at Company vs Attrition")
+
+```
+<br />  
+
+#### Implement KNN Model for Attrition
+```{r}
+set.seed(4)
+splitPerc = .7
+
+# pull out 3 explanatory variables and attrition
+caseStudy2SelectData = caseStudy2data %>% 
+    select(JobLevel, NumCompaniesWorked, YearsAtCompany, Attrition) #87,67
+    #select(NumCompaniesWorked, YearsAtCompany, YearsInCurrentRole, Attrition) #87,50
+    #select(YearsInCurrentRole, YearsWithCurrManager, Education, Attrition) #87,50
+
+# use split percentage above to split into train and test
+trainIndices = sample(1:dim(caseStudy2SelectData)[1], round(splitPerc * dim(caseStudy2SelectData)[1]))
+
+# put my train indices into a train df
+caseStudyTrain = caseStudy2SelectData[trainIndices,]
+
+# put my NOT (-) train indices into a test df
+caseStudyTest = caseStudy2SelectData[-trainIndices,]
+
+# run knn
+classifications = knn(caseStudyTrain[,1:3], caseStudyTest[,1:3], caseStudyTrain$Attrition, k = 5, prob = TRUE)
+
+# Confusion Matrix
+table(caseStudyTest$Attrition, classifications)
+confusionMatrix(table(caseStudyTest$Attrition, classifications))
+```
+<br />  
+
+#### Run KNN on the provided test data and write predictions to file
+```{r}
+caseStudy2SelectNoAtt = caseStudy2noAtt %>% 
+    select(JobLevel, NumCompaniesWorked, YearsAtCompany, ID)
+
+classifications = knn(caseStudyTrain[,1:3], caseStudy2SelectNoAtt[,1:3], caseStudyTrain$Attrition, k = 5, prob = TRUE)
+
+# Cleanup the df to match example file before writing
+dfKNN = as.data.frame(classifications)
+dfKNN$ID <- caseStudy2SelectNoAtt$ID
+dfKNN <- dfKNN %>% rename(Attrition = classifications)
+dfKNN <- dfKNN[,c(2,1)]
+
+# Write to file
+write.csv(dfKNN, "data/Case2PredictionsRoche_Attrition.csv", row.names = FALSE, quote=FALSE)
+```
+<br />  
+
+## Part 2 - Linear Regression for Monthly Income
+#### Prepare the data
+```{r}
+# RMSE = sqrt of the sum of Predicted minus Actual squared, over N
+set.seed(4)
+splitPerc = .7
+
+# Data set to use for LM
+caseStudy2SelectLMData = caseStudy2data
+caseStudy2SelectLMData = caseStudy2SelectLMData %>% mutate(TotalWorkingYears2 = TotalWorkingYears^2)
+caseStudy2SelectLMData = caseStudy2SelectLMData %>% mutate(TotalWorkingYears3 = TotalWorkingYears^3)
+
+# use split percentage above to split into train and test
+trainIndicesLM = sample(1:dim(caseStudy2SelectLMData)[1], round(splitPerc * dim(caseStudy2SelectLMData)[1]))
+
+# put my train indices into a train df
+caseStudyLMTrain = caseStudy2SelectLMData[trainIndices,]
+
+# put my NOT (-) train indices into a test df
+caseStudyLMTest = caseStudy2SelectLMData[-trainIndices,]
+```
+<br />  
+
+#### Run the model and calculate RMSE
+```{r}
+# fit the lm for the train
+monthlyIncomeFit = lm(MonthlyIncome~TotalWorkingYears+TotalWorkingYears2+TotalWorkingYears3, data = caseStudyLMTrain)
+summary(monthlyIncomeFit)
+```
+<br />  
+
+##### Get predictions with test data
+```{r, results='hide'}
+monthlyIncomeFitPredictions = predict(monthlyIncomeFit, newdata = caseStudyLMTest)
+as.data.frame(monthlyIncomeFitPredictions)
+```
+<br />  
+
+##### Manually calculate RMSE using the predictions and truth data
+```{r}
+RMSE = data.frame(Actual = caseStudyLMTest$MonthlyIncome, Predicted = monthlyIncomeFitPredictions)
+RMSE$Resisdual = RMSE$Predicted - RMSE$Actual
+RMSE$SquaredResidual = RMSE$Resisdual^2
+sqrt(mean(RMSE$SquaredResidual))
+```
+<br />  
+
+#### Plot the regression line of the predicted data against the observations
+```{r}
+caseStudyLMTest %>% ggplot(aes(x = TotalWorkingYears, y = MonthlyIncome)) + geom_point() + geom_line(data = caseStudyLMTest, aes( x = TotalWorkingYears, y = monthlyIncomeFitPredictions, col = "red"))
+
+```
+<br />  
+
+#### Run model against the provided test data and save to a csv file
+```{r}
+caseStudy2noSalary = caseStudy2noSalary %>% mutate(TotalWorkingYears2 = TotalWorkingYears^2)
+caseStudy2noSalary = caseStudy2noSalary %>% mutate(TotalWorkingYears3 = TotalWorkingYears^3)
+monthlyIncomeFitPredictions = predict(monthlyIncomeFit, newdata = caseStudy2noSalary)
+
+# Cleanup the df to match example file before writing
+dfLM = as.data.frame(monthlyIncomeFitPredictions)
+dfLM$ID <- caseStudy2noSalary$ID
+dfLM <- dfLM[,c(2,1)]
+dfLM <- dfLM %>% rename(MonthlyIncome = monthlyIncomeFitPredictions)
+dfLM$MonthlyIncome <- round(dfLM$MonthlyIncome)
+
+# Write to file
+write.csv(dfLM, "data/Case2PredictionsRoche_Salary.csv", row.names = FALSE, quote=FALSE)
+```
+
+
+```{r}
+
+```
+
+
+```{r, echo=FALSE, eval = FALSE}
+## Extra
+
+
+# Maybe
+caseStudy2data %>% ggplot(aes(x = JobSatisfaction, y = Attrition)) + geom_boxplot() + ggtitle("Job Satisfaction vs Attrition")
+
+# No
+caseStudy2data %>% ggplot(aes(x = PerformanceRating, y = Attrition)) + geom_boxplot() + ggtitle("Performance Rating vs Attrition")
+
+# No
+caseStudy2data %>% ggplot(aes(x = YearsSinceLastPromotion, y = Attrition)) + geom_boxplot() + ggtitle("Years Since Last Promotion vs Attrition")
+
+# Maybe
+caseStudy2data %>% ggplot(aes(x = DistanceFromHome, y = Attrition)) + geom_boxplot() + ggtitle("Commute vs Attrition")
+
+# No
+caseStudy2data %>% ggplot(aes(x = JobInvolvement, y = Attrition)) + geom_boxplot() + ggtitle("Job Involvement vs Attrition")
+
+# No
+caseStudy2data %>% ggplot(aes(x = StockOptionLevel, y = Attrition)) + geom_boxplot() + ggtitle("Stock Option Level vs Attrition")
+
+# No
+caseStudy2data %>% ggplot(aes(x = WorkLifeBalance, y = Attrition)) + geom_boxplot() + ggtitle("Work Life Balance vs Attrition")
+
+# Maybe
+caseStudy2data %>% ggplot(aes(x = YearsInCurrentRole, y = Attrition)) + geom_boxplot() + ggtitle("Years in Current Role vs Attrition")
+
+# Maybe
+caseStudy2data %>% ggplot(aes(x = YearsWithCurrManager, y = Attrition)) + geom_boxplot() + ggtitle("Years with Current Manager vs Attrition")
+
+# Maybe
+caseStudy2data %>% ggplot(aes(x = Education, y = Attrition)) + geom_boxplot() + ggtitle("Education vs Attrition")
+
+# Maybe
+caseStudy2data %>% ggplot(aes(x = EnvironmentSatisfaction, y = Attrition)) + geom_boxplot() + ggtitle("Environment Satisfaction vs Attrition")
+
+# No
+caseStudy2data %>% ggplot(aes(x = PercentSalaryHike, y = Attrition)) + geom_boxplot() + ggtitle("Percent Salary Hike vs Attrition")
+
+# No
+caseStudy2data %>% ggplot(aes(x = TrainingTimesLastYear, y = Attrition)) + geom_boxplot() + ggtitle("Training vs Attrition")
+```
+
+
+
+<br />  
+<br />  
+
+End
