@@ -39,6 +39,7 @@ caseStudy2data$Gender <- as.factor(caseStudy2data$Gender)
 caseStudy2data$MaritalStatus <- as.factor(caseStudy2data$MaritalStatus)
 caseStudy2data$Over18 <- as.factor(caseStudy2data$Over18)
 caseStudy2data$OverTime <- as.factor(caseStudy2data$OverTime)
+caseStudy2data$JobRole <- as.factor(caseStudy2data$JobRole)
 
 # Look for missing values -- there are none
 row.has.na <- apply(caseStudy2data, 1, function(x){any(is.na(x))})
@@ -51,24 +52,29 @@ sum(row.has.na)
 #### Below are the 3 variables identifed for highest Sensitivity/Specificity
 ```{r}
 # 1 - Job Level
-caseStudy2data %>% ggplot(aes(x = JobLevel, y = Attrition)) + geom_boxplot() + ggtitle("Job Level vs Attrition")
+caseStudy2data %>% ggplot(aes(x = JobLevel, y = Attrition)) + geom_boxplot(fill="violetred4") + ggtitle("Job Level vs Attrition") + theme_minimal()
 
 p = caseStudy2data %>% 
   count(JobLevel,Attrition) %>% 
-  ggplot(aes(x=JobLevel,y=Attrition)) + geom_tile(mapping = aes(fill = n)) + ggtitle("Job Level vs Attrition")
+  ggplot(aes(x=JobLevel,y=Attrition)) + geom_tile(mapping = aes(fill = n)) + ggtitle("Job Level vs Attrition") + theme_minimal()
 ggplotly(p)
 
 # 2 - Number of Companies worked
-caseStudy2data %>% ggplot(aes(x = NumCompaniesWorked, y = Attrition)) + geom_boxplot() + ggtitle("Number of Companies Worked vs Attrition")
+caseStudy2data %>% ggplot(aes(x = NumCompaniesWorked, y = Attrition)) + geom_boxplot(fill="violetred4") + ggtitle("Number of Companies Worked vs Attrition") + theme_minimal()
 
 p = caseStudy2data %>% 
   count(NumCompaniesWorked,Attrition) %>% 
-  ggplot(aes(x=NumCompaniesWorked,y=Attrition)) + geom_tile(mapping = aes(fill = n)) + ggtitle("Number of Companies Worked vs Attrition")
+  ggplot(aes(x=NumCompaniesWorked,y=Attrition)) + geom_tile(mapping = aes(fill = n)) + ggtitle("Number of Companies Worked vs Attrition") + theme_minimal()
 ggplotly(p)
 
 # 3 - Years at the company
-caseStudy2data %>% ggplot(aes(x = YearsAtCompany, y = Attrition)) + geom_boxplot() + ggtitle("Years at Company vs Attrition")
+caseStudy2data %>% ggplot(aes(x = YearsAtCompany, y = Attrition)) + geom_boxplot(fill="violetred4") + ggtitle("Years at Company vs Attrition") + theme_minimal()
 
+# Mean and Median Years at Company
+caseStudy2data %>%
+  group_by(Attrition) %>%
+    summarise(MeanYearsAtCompany=mean(YearsAtCompany),
+              MedianYearsAtCompany=median(YearsAtCompany))
 ```
 <br />  
 
@@ -80,8 +86,6 @@ splitPerc = .7
 # pull out 3 explanatory variables and attrition
 caseStudy2SelectData = caseStudy2data %>% 
     select(JobLevel, NumCompaniesWorked, YearsAtCompany, Attrition) #87,67
-    #select(NumCompaniesWorked, YearsAtCompany, YearsInCurrentRole, Attrition) #87,50
-    #select(YearsInCurrentRole, YearsWithCurrManager, Education, Attrition) #87,50
 
 # use split percentage above to split into train and test
 trainIndices = sample(1:dim(caseStudy2SelectData)[1], round(splitPerc * dim(caseStudy2SelectData)[1]))
@@ -189,12 +193,35 @@ dfLM$MonthlyIncome <- round(dfLM$MonthlyIncome)
 # Write to file
 write.csv(dfLM, "data/Case2PredictionsRoche_Salary.csv", row.names = FALSE, quote=FALSE)
 ```
+<br />  
 
-
+## Part 3 - Insights by job role
+#### Plot by JobRole as a factor
 ```{r}
+# Summarize the number of onbservations by Job Tole
+summary(caseStudy2data$JobRole)
+
+
+# Does one job role have higher environment satisfaction?
+caseStudy2data %>%
+  group_by(JobRole) %>%
+    summarize(Environment=mean(EnvironmentSatisfaction),
+              Job=mean(JobSatisfaction),
+              Relationship=mean(RelationshipSatisfaction),
+              Average=((mean(EnvironmentSatisfaction) + 
+                          mean(JobSatisfaction) + 
+                          mean(RelationshipSatisfaction))/3),
+              Income=mean(MonthlyIncome))
+
+
+# Does one job role have higher attrition?
+caseStudy2data %>%
+  group_by(JobRole) %>%
+    summarise(Attrition.No = sum(Attrition == "No", na.rm=T) / n(), 
+              Attrition.Yes = sum(Attrition == "Yes", na.rm=T) / n() )
 
 ```
-
+<br />  
 
 ```{r, echo=FALSE, eval = FALSE}
 ## Extra
