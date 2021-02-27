@@ -15,13 +15,22 @@ suppressMessages( library(GGally) )
 suppressMessages( library(plotly) )
 suppressMessages( library(Metrics))
 suppressMessages( library(readxl) )
+suppressMessages( library(ggpubr) )
 
 ```
 
 # Evaluating Attrition and Predicting Monthly Income
 <br />  
-
+My name is Chris Roche. In this file you'll find my analysis of attrition and monthly income data from your company. Using the data set provided to my organization, I have conducted exploratory data analysis, implemented a K-Nearest Neighbor model for classifying an employee's attrition, and a linear regression model for prediction an employees monthly income based on their years in industry.
+<br />  
+Here's a link to my presentation of this report: https://youtu.be/2mG4sgvjgwM
+<br />  
+  
 #### Load in files
+First we will load in three files:  
+* the training data  
+* unlabeled test data for attrition classification  
+* unlabeled test data for monthly salary prediction  
 ```{r}
 caseStudy2data = read.csv("data/CaseStudy2-data.csv", header = TRUE)
 caseStudy2noAtt = read.csv("data/CaseStudy2CompSet-NoAttrition.csv", header = TRUE)
@@ -30,6 +39,7 @@ caseStudy2noSalary = read_excel("data/CaseStudy2CompSet-NoSalary.xlsx")
 <br />  
 
 #### Clean data we'll use for training
+Begin by turning specific variables into factors with discrete levels. Check for missing data.
 ```{r}
 caseStudy2data$Attrition <- as.factor(caseStudy2data$Attrition)
 caseStudy2data$BusinessTravel <- as.factor(caseStudy2data$BusinessTravel)
@@ -45,11 +55,15 @@ caseStudy2data$JobRole <- as.factor(caseStudy2data$JobRole)
 row.has.na <- apply(caseStudy2data, 1, function(x){any(is.na(x))})
 sum(row.has.na)
 ```
+The zero above indicates that there are no missing values within the data set provided.
 <br />  
 
 ## Part 1 - KNN for Attrition of emplyees
 #### Begin exploring correlation of several variables for Attrition
-#### Below are the 3 variables identifed for highest Sensitivity/Specificity
+Below are the 3 variables identifed for highest Sensitivity/Specificity  
+* Employee's Job level (1 - 5; 5 being highest)  
+* Number of companies worked for in employee's career  
+* Number of years employed by your company  
 ```{r}
 # 1 - Job Level
 caseStudy2data %>% ggplot(aes(x = JobLevel, y = Attrition)) + geom_boxplot(fill="violetred4") + ggtitle("Job Level vs Attrition") + theme_minimal()
@@ -78,7 +92,8 @@ caseStudy2data %>%
 ```
 <br />  
 
-#### Implement KNN Model for Attrition
+#### Prepare the data
+Divide up the labeled employee data into a 70/30 train/test split.
 ```{r}
 set.seed(4)
 splitPerc = .7
@@ -95,7 +110,17 @@ caseStudyTrain = caseStudy2SelectData[trainIndices,]
 
 # put my NOT (-) train indices into a test df
 caseStudyTest = caseStudy2SelectData[-trainIndices,]
+```
+<br />  
 
+#### Implement KNN Model for Attrition
+This model uses the three contributors identified above to classify an employee's attrition status.    
+  
+Key results obtained:  
+* Accuracy    : 87.4%  
+* Sensitivity : 87.6%  
+* Specificity : 66.7%  
+```{r}
 # run knn
 classifications = knn(caseStudyTrain[,1:3], caseStudyTest[,1:3], caseStudyTrain$Attrition, k = 5, prob = TRUE)
 
@@ -106,6 +131,8 @@ confusionMatrix(table(caseStudyTest$Attrition, classifications))
 <br />  
 
 #### Run KNN on the provided test data and write predictions to file
+Using the unlabeled data set read in above and the KNN model, classify the test observations and write back out to a file for post-processing.
+File name: data/Case2PredictionsRoche_Attrition.csv
 ```{r}
 caseStudy2SelectNoAtt = caseStudy2noAtt %>% 
     select(JobLevel, NumCompaniesWorked, YearsAtCompany, ID)
@@ -125,6 +152,7 @@ write.csv(dfKNN, "data/Case2PredictionsRoche_Attrition.csv", row.names = FALSE, 
 
 ## Part 2 - Linear Regression for Monthly Income
 #### Prepare the data
+Divide up the labeled employee data into a 70/30 train/test split.
 ```{r}
 # RMSE = sqrt of the sum of Predicted minus Actual squared, over N
 set.seed(4)
@@ -146,7 +174,11 @@ caseStudyLMTest = caseStudy2SelectLMData[-trainIndices,]
 ```
 <br />  
 
-#### Run the model and calculate RMSE
+#### Run the model
+Run a linear regression model using the following parameters:  
+1. Total Working Years  
+2. Total Working Years Squared  
+3. Total Working Years Cubed  
 ```{r}
 # fit the lm for the train
 monthlyIncomeFit = lm(MonthlyIncome~TotalWorkingYears+TotalWorkingYears2+TotalWorkingYears3, data = caseStudyLMTrain)
@@ -155,13 +187,16 @@ summary(monthlyIncomeFit)
 <br />  
 
 ##### Get predictions with test data
+Using the model, run it against the test data
 ```{r, results='hide'}
 monthlyIncomeFitPredictions = predict(monthlyIncomeFit, newdata = caseStudyLMTest)
 as.data.frame(monthlyIncomeFitPredictions)
 ```
 <br />  
 
-##### Manually calculate RMSE using the predictions and truth data
+##### Calculate RMSE using the predictions and truth data
+Determine the Root Mean Squared Error of the predictions  
+Performance achieved: < $2716  
 ```{r}
 RMSE = data.frame(Actual = caseStudyLMTest$MonthlyIncome, Predicted = monthlyIncomeFitPredictions)
 RMSE$Resisdual = RMSE$Predicted - RMSE$Actual
@@ -172,12 +207,18 @@ sqrt(mean(RMSE$SquaredResidual))
 
 #### Plot the regression line of the predicted data against the observations
 ```{r}
-caseStudyLMTest %>% ggplot(aes(x = TotalWorkingYears, y = MonthlyIncome)) + geom_point() + geom_line(data = caseStudyLMTest, aes( x = TotalWorkingYears, y = monthlyIncomeFitPredictions, col = "red"))
-
+caseStudyLMTest %>% ggplot(aes(x = TotalWorkingYears, y = MonthlyIncome)) + 
+  geom_point() + 
+  geom_line(data = caseStudyLMTest, aes( x = TotalWorkingYears, 
+      y = monthlyIncomeFitPredictions, col = "red")) + 
+  stat_cor(label.y = 150, aes(label = paste(..rr.label.., 
+      ..p.label.., sep = "~`,`~")))
 ```
 <br />  
 
-#### Run model against the provided test data and save to a csv file
+#### Run the model against the provided test data and save to a csv file
+Using the unlabeled data set read in above and the linear regression model, classify the test observations and write back out to a file for post-processing.
+File name: data/Case2PredictionsRoche_Salary.csv
 ```{r}
 caseStudy2noSalary = caseStudy2noSalary %>% mutate(TotalWorkingYears2 = TotalWorkingYears^2)
 caseStudy2noSalary = caseStudy2noSalary %>% mutate(TotalWorkingYears3 = TotalWorkingYears^3)
@@ -197,6 +238,7 @@ write.csv(dfLM, "data/Case2PredictionsRoche_Salary.csv", row.names = FALSE, quot
 
 ## Part 3 - Insights by job role
 #### Plot by JobRole as a factor
+A detailed look into median satisfaction ratings and attrition percentages based on job role.
 ```{r}
 # Summarize the number of onbservations by Job Tole
 summary(caseStudy2data$JobRole)
@@ -266,10 +308,7 @@ caseStudy2data %>% ggplot(aes(x = PercentSalaryHike, y = Attrition)) + geom_boxp
 # No
 caseStudy2data %>% ggplot(aes(x = TrainingTimesLastYear, y = Attrition)) + geom_boxplot() + ggtitle("Training vs Attrition")
 ```
-
-
-
 <br />  
 <br />  
-
-End
+Thank you! And don't forget to view my presentation: https://youtu.be/2mG4sgvjgwM  
+<br />  
